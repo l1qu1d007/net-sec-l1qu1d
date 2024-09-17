@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Function to install Tor if not installed
+install_tor() {
+    if ! command -v tor &> /dev/null; then
+        echo "Tor is not installed. Installing..."
+        sudo apt update && sudo apt install -y tor
+    fi
+}
+
+# Function to rotate IP using Tor
+rotate_ip() {
+    echo "Rotating IP..."
+    sudo service tor restart
+    sleep 5
+    echo "IP rotated. New IP:"
+    curl --socks5-hostname localhost:9050 http://ipinfo.io/ip
+}
+
+# Function to scan Tor for exit nodes
+scan_tor_exit_nodes() {
+    echo "Scanning Tor exit nodes for geographic location..."
+    echo "Select a location to connect to:"
+    curl --socks5-hostname localhost:9050 https://check.torproject.org/exit-addresses | grep 'ExitAddress' | nl
+    read -p "Enter the number of the exit node to connect to: " node_number
+    exit_node=$(curl --socks5-hostname localhost:9050 https://check.torproject.org/exit-addresses | grep 'ExitAddress' | sed -n "${node_number}p" | awk '{print $2}')
+    echo "Selected exit node: $exit_node"
+}
+
+# Function to forward ports
+forward_ports() {
+    read -p "Do you want to specify ports to forward? (y/n): " specify_ports
+    if [[ "$specify_ports" =~ ^[Yy]$ ]]; then
+        read -p "Enter ports to forward (comma-separated): " ports
+    else
+        ports="333,666,555,444,999,111,717,317"
+    fi
+
+    IFS=',' read -r -a port_array <<< "$ports"
+    for port in "${port_array[@]}"; do
+        echo "Forwarding port $port..."
+        # Example command to forward the port (using iptables)
+        sudo iptables -t nat -A PREROUTING -p tcp --dport "$port" -j REDIRECT --to-port "$port"
+    done
+    echo "Ports forwarded: $ports"
+}
+
+# Main script execution
+install_tor
+
+while true; do
+    echo "Select an option:"
+    echo "1. Rotate IP"
+    echo "2. Scan Tor for exit nodes"
+    echo "3. Forward ports"
+    echo "4. Exit"
+    read -p "Enter your choice: " choice
+
+    case $choice in
+        1)
+            rotate_ip
+            ;;
+        2)
+            scan_tor_exit_nodes
+            ;;
+        3)
+            forward_ports
+            ;;
+        4)
+            echo "Exiting..."
+            exit 0
+            ;;
+        *)
+            echo "Invalid choice. Please try again."
+            ;;
+    esac
+
+    read -p "Do you want to perform another action? (y/n): " continue_choice
+    if [[ ! "$continue_choice" =~ ^[Yy]$ ]]; then
+        break
+    fi
+done
